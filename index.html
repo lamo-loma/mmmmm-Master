@@ -4,7 +4,7 @@
     <title>Squirrel, Mouse, Hamster Classifier</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.4/dist/teachablemachine-image.min.js"></script>
+    <script src="https://cdn.jsdelivr.ly/npm/@teachablemachine/image@0.8.4/dist/teachablemachine-image.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
@@ -157,7 +157,7 @@
     </div>
 
     <script type="text/javascript">
-        const URL = "https://teachablemachine.withgoogle.com/models/t6UULfMB9/";
+        const URL = "https://teachablemachine.withgoogle.com/models/t6UULfMB9/"; 
         const MQTT_TOPIC = "LAMO";
 
         let model, webcam, maxPredictions;
@@ -182,7 +182,7 @@
                 updateStatus("Connecting to MQTT...");
                 const clientId = "web_" + Math.floor(Math.random() * 10000);
                 
-                // Using public broker
+                // ใช้ Public Broker ของ HiveMQ และ WSS Port
                 mqttClient = new Paho.MQTT.Client("broker.hivemq.com", 8884, "/mqtt", clientId);
 
                 mqttClient.onConnectionLost = (responseObject) => {
@@ -218,7 +218,9 @@
             isRunning = true;
             
             try {
+                // รอการเชื่อมต่อ MQTT ก่อน
                 await connectMQTT();
+
                 updateStatus("Loading model...");
                 const modelURL = URL + "model.json";
                 const metadataURL = URL + "metadata.json";
@@ -264,8 +266,13 @@
         }
 
         async function predict() {
-            if (!webcam || !webcam.canvas || !mqttClient || !mqttClient.isConnected()) {
-                console.log('Skipping prediction loop...');
+            // ตรวจสอบว่ามี Client และเชื่อมต่ออยู่จริง ๆ
+            if (!webcam || !webcam.canvas) {
+                return;
+            }
+
+            if (!mqttClient || !mqttClient.isConnected()) {
+                console.log('MQTT client is not connected. Skipping message send.');
                 return;
             }
 
@@ -299,21 +306,26 @@
                 }
             }
 
-            const confidenceThreshold = 0.9;
+            const confidenceThreshold = 0.8; // ลด Threshold เพื่อให้ส่งง่ายขึ้น
             if (highestProb >= confidenceThreshold && predictedClass !== lastSentMessage) {
-                const message = new Paho.MQTT.Message(predictedClass);
-                message.destinationName = MQTT_TOPIC;
-                mqttClient.send(message);
-                console.log(`Sent: ${predictedClass}`);
-                lastSentMessage = predictedClass;
-                updateStatus(`Sent: ${predictedClass}`, "success");
+                try {
+                    const message = new Paho.MQTT.Message(predictedClass);
+                    message.destinationName = MQTT_TOPIC;
+                    mqttClient.send(message);
+                    console.log(`Sent: ${predictedClass}`);
+                    lastSentMessage = predictedClass;
+                    updateStatus(`Sent: ${predictedClass}`, "success");
 
-                setTimeout(() => {
-                    if (isRunning) {
-                        updateStatus("Camera Ready - Detecting...", "success");
-                        lastSentMessage = "";
-                    }
-                }, 5000);
+                    setTimeout(() => {
+                        if (isRunning) {
+                            updateStatus("Camera Ready - Detecting...", "success");
+                            lastSentMessage = "";
+                        }
+                    }, 5000);
+                } catch (error) {
+                    console.error("Failed to send message:", error);
+                    updateStatus("Failed to send message.", "error");
+                }
             }
         }
 
