@@ -1,177 +1,338 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Teachable Machine & HiveMQ</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin: 0;
-      padding: 0;
-      background-color: #f0f0f0;
-    }
-    #webcam-container {
-      max-width: 100%;
-      margin: 10px auto;
-    }
-    video {
-      max-width: 100%;
-      height: auto;
-    }
-    #label-container {
-      margin: 10px;
-      font-size: 1.2em;
-    }
-    button {
-      padding: 10px 20px;
-      font-size: 1em;
-      margin: 5px;
-      cursor: pointer;
-      border: none;
-      border-radius: 5px;
-      transition: background-color 0.3s ease;
-    }
-    #startBtn { background-color: #4CAF50; color: white; }
-    #stopBtn { background-color: #f44336; color: white; }
-    #connectMqttBtn { background-color: #008CBA; color: white; }
-    #disconnectMqttBtn { background-color: #555555; color: white; }
-    #status {
-      margin-top: 10px;
-      font-weight: bold;
-    }
-  </style>
+    <title>Squirrel, Mouse, Hamster Classifier</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.4/dist/teachablemachine-image.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f4f8; /* Light background */
+            color: #333;
+        }
+        .container {
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 25px;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 25px;
+            font-size: 2.2em;
+        }
+        .controls {
+            margin-bottom: 25px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+        }
+        button {
+            padding: 12px 25px;
+            font-size: 1em;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        button i { font-size: 1.1em; }
+        .btn-start { background-color: #28a745; color: white; }
+        .btn-stop { background-color: #dc3545; color: white; }
+        .btn-start:hover, .btn-stop:hover { transform: translateY(-2px); opacity: 0.9; }
+
+        #status-container {
+            margin-top: 25px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status-badge-initial { background-color: #e9ecef; color: #495057; }
+        .status-badge-success { background-color: #d4edda; color: #155724; }
+        .status-badge-error { background-color: #f8d7da; color: #721c24; }
+
+        #webcam-container {
+            width: 100%;
+            height: 240px;
+            margin: 20px auto;
+            border-radius: 8px;
+            overflow: hidden;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #6c757d;
+            font-size: 1.1em;
+        }
+        #webcam-container canvas {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        #label-container {
+            margin-top: 25px;
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+            min-height: 100px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            text-align: left;
+        }
+        .label-item {
+            display: flex;
+            align-items: center;
+            font-size: 1.1em;
+            color: #495057;
+        }
+        .label-name {
+            flex-basis: 120px;
+            min-width: 100px;
+            font-weight: 600;
+        }
+        .progress-bar-container {
+            flex-grow: 1;
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            overflow: hidden;
+            position: relative;
+        }
+        .progress-bar {
+            height: 100%;
+            background-color: #007bff;
+            width: 0%;
+            border-radius: 5px;
+            transition: width 0.2s ease-out;
+            display: flex;
+            align-items: center;
+            padding-left: 8px;
+            box-sizing: border-box;
+            color: white;
+            font-weight: bold;
+            justify-content: flex-end;
+            padding-right: 5px;
+        }
+        .progress-bar.predicted { background-color: #28a745; }
+    </style>
 </head>
 <body>
-  <h1>Teachable Machine Image Model & HiveMQ</h1>
-  <button type="button" id="startBtn" onclick="init('environment')">Start (Back Camera)</button>
-  <button type="button" id="startBtn" onclick="init('user')">Start (Front Camera)</button>
-  <button type="button" id="stopBtn" onclick="stop()">Stop Camera</button>
-  <br>
-  <button type="button" id="connectMqttBtn" onclick="connectMqtt()">Connect to HiveMQ</button>
-  <button type="button" id="disconnectMqttBtn" onclick="disconnectMqtt()">Disconnect</button>
+    <div class="container">
+        <h1><i class="fas fa-robot"></i> Squirrel, Mouse, Hamster Classifier</h1>
+        <div class="controls">
+            <button class="btn-start" onclick="init('environment')"><i class="fas fa-camera"></i> Start (Back Camera)</button>
+            <button class="btn-start" onclick="init('user')"><i class="fas fa-video"></i> Start (Front Camera)</button>
+            <button class="btn-stop" onclick="stop()"><i class="fas fa-stop-circle"></i> Stop</button>
+        </div>
 
-  <div id="status">Status: Disconnected</div>
-  <div id="webcam-container"></div>
-  <div id="label-container"></div>
+        <div id="status-container" class="status-badge-initial">
+            <i class="fas fa-info-circle"></i> Status: Ready
+        </div>
+        
+        <div id="webcam-container">
+            <p>Press "Start" to begin classification.</p>
+            <i class="fas fa-camera-retro fa-3x" style="margin-top: 15px; opacity: 0.6;"></i>
+        </div>
+        
+        <div id="label-container"></div>
+    </div>
 
-  <script type="text/javascript">
-    const URL = "https://teachablemachine.withgoogle.com/models/t6UULfMB9/";
-    const MQTT_BROKER = 'wss://your-hivemq-broker-id.s1.eu.hivemq.cloud:8884/mqtt'; // แก้ไขเป็น URL ของ HiveMQ Broker ของคุณ
-    const MQTT_TOPIC = 'tm_prediction/results';
-    const MQTT_CLIENT_ID = 'web_' + Math.random().toString(16).substr(2, 8); // สร้าง Client ID ที่ไม่ซ้ำกัน
+    <script type="text/javascript">
+        const URL = "https://teachablemachine.withgoogle.com/models/t6UULfMB9/";
+        const MQTT_TOPIC = "LAMO";
 
-    let model, webcam, labelContainer, maxPredictions;
-    let mqttClient;
-    let lastSentMessage = ""; // เพื่อไม่ให้ส่งข้อความซ้ำซ้อน
+        let model, webcam, maxPredictions;
+        let mqttClient;
+        let lastSentMessage = "";
+        let isRunning = false;
 
-    // Initialize Teachable Machine
-    async function init(facingMode) {
-      const modelURL = URL + "model.json";
-      const metadataURL = URL + "metadata.json";
-
-      // โหลดโมเดล
-      model = await tmImage.load(modelURL, metadataURL);
-      maxPredictions = model.getTotalClasses();
-
-      // ตั้งค่า Webcam สำหรับมือถือ
-      webcam = new tmImage.Webcam(224, 224, false);
-      try {
-        await webcam.setup({ facingMode: facingMode });
-        await webcam.play();
-        window.requestAnimationFrame(loop);
-      } catch (e) {
-        console.error("Webcam setup failed:", e);
-        document.getElementById("label-container").innerText = "Error: " + e.message;
-        return;
-      }
-
-      document.getElementById("webcam-container").appendChild(webcam.canvas);
-      labelContainer = document.getElementById("label-container");
-      labelContainer.innerHTML = "";
-      for (let i = 0; i < maxPredictions; i++) {
-        labelContainer.appendChild(document.createElement("div"));
-      }
-    }
-
-    // Main loop for prediction
-    async function loop() {
-      webcam.update();
-      await predict();
-      window.requestAnimationFrame(loop);
-    }
-
-    // Predict and send MQTT message
-    async function predict() {
-      const prediction = await model.predict(webcam.canvas);
-      let highestProb = 0;
-      let predictedClass = "";
-
-      for (let i = 0; i < maxPredictions; i++) {
-        const classPrediction = prediction[i].className + ": " + prediction[i].probability.toFixed(2);
-        labelContainer.childNodes[i].innerHTML = classPrediction;
-
-        // หาคลาสที่มีความน่าจะเป็นสูงสุด
-        if (prediction[i].probability > highestProb) {
-          highestProb = prediction[i].probability;
-          predictedClass = prediction[i].className;
+        function updateStatus(message, type = "initial") {
+            const statusDiv = document.getElementById("status-container");
+            let iconClass;
+            switch(type) {
+                case 'success': iconClass = 'fas fa-check-circle'; break;
+                case 'error': iconClass = 'fas fa-exclamation-triangle'; break;
+                default: iconClass = 'fas fa-info-circle';
+            }
+            statusDiv.innerHTML = `<i class="${iconClass}"></i> Status: ${message}`;
+            statusDiv.className = `status-badge-${type}`;
         }
-      }
+        
+        function connectMQTT() {
+            return new Promise((resolve, reject) => {
+                updateStatus("Connecting to MQTT...");
+                const clientId = "web_" + Math.floor(Math.random() * 10000);
+                
+                // Using public broker
+                mqttClient = new Paho.MQTT.Client("broker.hivemq.com", 8884, "/mqtt", clientId);
 
-      // ตรวจสอบว่ามีความน่าจะเป็นสูงพอที่จะส่งข้อความ และไม่ใช่ข้อความเดิมที่เพิ่งส่งไป
-      // ป้องกันการส่งข้อความซ้ำซ้อน
-      if (highestProb > 0.85 && predictedClass !== lastSentMessage) { // ตั้งค่า threshold ที่เหมาะสม
-        if (mqttClient && mqttClient.connected) {
-          console.log(`Sending MQTT message: ${predictedClass}`);
-          mqttClient.publish(MQTT_TOPIC, predictedClass);
-          lastSentMessage = predictedClass;
+                mqttClient.onConnectionLost = (responseObject) => {
+                    console.error("MQTT lost:", responseObject.errorMessage);
+                    updateStatus("MQTT lost. Retrying...", "error");
+                    if (isRunning) {
+                        setTimeout(() => connectMQTT().catch(() => {}), 5000);
+                    }
+                };
+
+                mqttClient.onMessageArrived = (message) => {
+                    console.log("MQTT message arrived:", message.payloadString);
+                };
+
+                mqttClient.connect({
+                    useSSL: true,
+                    timeout: 30,
+                    onSuccess: () => {
+                        updateStatus("MQTT Connected", "success");
+                        resolve();
+                    },
+                    onFailure: (e) => {
+                        console.error("MQTT failed:", e.errorMessage);
+                        updateStatus("MQTT Failed: " + e.errorMessage, "error");
+                        reject(e);
+                    }
+                });
+            });
         }
-      }
-    }
+        
+        async function init(facingMode) {
+            if (isRunning) { return; }
+            isRunning = true;
+            
+            try {
+                await connectMQTT();
+                updateStatus("Loading model...");
+                const modelURL = URL + "model.json";
+                const metadataURL = URL + "metadata.json";
+                model = await tmImage.load(modelURL, metadataURL);
+                maxPredictions = model.getTotalClasses();
+                updateStatus("Model Loaded", "success");
 
-    // Stop Webcam
-    function stop() {
-      if (webcam) {
-        webcam.stop();
-        document.getElementById("webcam-container").innerHTML = '';
-        document.getElementById("label-container").innerHTML = '';
-      }
-    }
+                const labelContainer = document.getElementById("label-container");
+                labelContainer.innerHTML = "";
+                const classLabels = model.getClassLabels();
+                for (let i = 0; i < maxPredictions; i++) {
+                    const classLabel = classLabels[i];
+                    const labelItem = document.createElement("div");
+                    labelItem.classList.add('label-item');
+                    labelItem.innerHTML = `<span class="label-name">${classLabel}:</span><div class="progress-bar-container"><div class="progress-bar" id="progress-${i}"></div></div>`;
+                    labelContainer.appendChild(labelItem);
+                }
 
-    // Connect to HiveMQ
-    function connectMqtt() {
-      document.getElementById("status").innerText = "Status: Connecting...";
-      mqttClient = mqtt.connect(MQTT_BROKER, {
-        clientId: MQTT_CLIENT_ID,
-        username: 'your-username', // ใส่ username ของคุณ
-        password: 'your-password' // ใส่ password ของคุณ
-      });
+                updateStatus("Opening camera...");
+                webcam = new tmImage.Webcam(320, 240, false);
+                await webcam.setup({ facingMode: facingMode || "environment" });
+                await webcam.play();
 
-      mqttClient.on('connect', () => {
-        console.log('Connected to HiveMQ!');
-        document.getElementById("status").innerText = "Status: Connected ✅";
-      });
+                const webcamContainer = document.getElementById("webcam-container");
+                webcamContainer.innerHTML = '';
+                webcamContainer.appendChild(webcam.canvas);
 
-      mqttClient.on('error', (err) => {
-        console.error('MQTT Connection error:', err);
-        document.getElementById("status").innerText = "Status: Connection Failed ❌";
-        mqttClient.end();
-      });
-    }
+                updateStatus("Camera Ready - Detecting...", "success");
+                window.requestAnimationFrame(loop);
 
-    // Disconnect from HiveMQ
-    function disconnectMqtt() {
-      if (mqttClient) {
-        mqttClient.end(() => {
-          console.log('Disconnected from HiveMQ.');
-          document.getElementById("status").innerText = "Status: Disconnected 🔴";
-          mqttClient = null;
-        });
-      }
-    }
-  </script>
+            } catch (error) {
+                console.error("Init error:", error);
+                updateStatus("Error: " + (error?.message || "Failed to start."), "error");
+                stop();
+            }
+        }
+
+        async function loop() {
+            if (!isRunning) { return; }
+            webcam.update();
+            await predict();
+            window.requestAnimationFrame(loop);
+        }
+
+        async function predict() {
+            if (!webcam || !webcam.canvas || !mqttClient || !mqttClient.isConnected()) {
+                console.log('Skipping prediction loop...');
+                return;
+            }
+
+            const prediction = await model.predict(webcam.canvas);
+            let highestProb = 0;
+            let predictedClass = "";
+            let predictedIndex = -1;
+            
+            for (let i = 0; i < maxPredictions; i++) {
+                const prob = prediction[i].probability;
+                const className = prediction[i].className;
+                const progressBar = document.getElementById(`progress-${i}`);
+                
+                if (progressBar) {
+                    progressBar.style.width = `${prob * 100}%`;
+                    progressBar.textContent = `${(prob * 100).toFixed(0)}%`;
+                    progressBar.classList.remove('predicted');
+                }
+                
+                if (prob > highestProb) {
+                    highestProb = prob;
+                    predictedClass = className;
+                    predictedIndex = i;
+                }
+            }
+
+            if (predictedIndex !== -1) {
+                const progressBar = document.getElementById(`progress-${predictedIndex}`);
+                if (progressBar) {
+                    progressBar.classList.add('predicted');
+                }
+            }
+
+            const confidenceThreshold = 0.9;
+            if (highestProb >= confidenceThreshold && predictedClass !== lastSentMessage) {
+                const message = new Paho.MQTT.Message(predictedClass);
+                message.destinationName = MQTT_TOPIC;
+                mqttClient.send(message);
+                console.log(`Sent: ${predictedClass}`);
+                lastSentMessage = predictedClass;
+                updateStatus(`Sent: ${predictedClass}`, "success");
+
+                setTimeout(() => {
+                    if (isRunning) {
+                        updateStatus("Camera Ready - Detecting...", "success");
+                        lastSentMessage = "";
+                    }
+                }, 5000);
+            }
+        }
+
+        function stop() {
+            isRunning = false;
+            if (webcam) {
+                webcam.stop();
+                webcam.dispose();
+                document.getElementById("webcam-container").innerHTML = `<p>Press "Start" to begin classification.</p><i class="fas fa-camera-retro fa-3x" style="margin-top: 15px; opacity: 0.6;"></i>`;
+                document.getElementById("label-container").innerHTML = '';
+            }
+            if (mqttClient && mqttClient.isConnected()) {
+                mqttClient.disconnect();
+                mqttClient = null;
+            }
+            updateStatus("Stopped", "initial");
+        }
+
+        window.addEventListener('beforeunload', stop);
+    </script>
 </body>
 </html>
